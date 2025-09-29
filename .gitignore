@@ -1,0 +1,46 @@
+```
+# Virtual environment
+venv/
+.env/
+.venv/
+*.egg-info/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter / Colab
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Indexes and embeddings
+*.faiss
+*.npy
+*.npz
+index/
+index.faiss
+chunks.npy
+sources.npy
+
+# Uploaded / processed documents
+data/*
+!data/.gitkeep   # keep empty data folder tracked
+
+# Environment & secrets
+.env
+*.env
+*.secret
+*.key
+*.pem
+
+# Misc
+.cache/
+```
