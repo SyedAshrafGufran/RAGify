@@ -3,8 +3,11 @@ from sentence_transformers import SentenceTransformer
 import faiss, numpy as np
 from Load_docs import load_folder
 
+#Folder path input
+path = input("Please enter the folder path: ")
+
 # Load docs
-docs = load_folder("data/")
+docs = load_folder(path)
 
 # Chunk simple (split every 500 chars)
 chunks, sources = [], []
