@@ -77,7 +77,7 @@ def dynamic_semantic_chunk(text: str, model: SentenceTransformer) -> List[str]:
 
 def index(path, log_fn):
     # Initialize embedding model (used here to compute semantic splits)
-    print("Loading embedding model...")
+    log_fn("Loading embedding model...")
     embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 
     # Load docs
