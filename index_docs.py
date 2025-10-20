@@ -75,7 +75,7 @@ def dynamic_semantic_chunk(text: str, model: SentenceTransformer) -> List[str]:
 
 # --- Main Indexing Logic ---
 
-def index(path):
+def index(path, log_fn):
     # Initialize embedding model (used here to compute semantic splits)
     print("Loading embedding model...")
     embed_model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -89,7 +89,7 @@ def index(path):
     parent_map_indices = []             # Maps child index to parent index
 
     # 1. Iterate and create dynamic Parent Chunks
-    print("Creating Dynamic Semantic Chunks...")
+    log_fn("Creating Dynamic Semantic Chunks...")
     for name, text in docs:
         # Use the dynamic splitter to create Parent Chunks
         parent_list = dynamic_semantic_chunk(text, embed_model)
@@ -112,14 +112,14 @@ def index(path):
                 parent_map_indices.append(parent_index) # Link child back to its parent
 
     # 3. Embed Child Chunks (Sentences)
-    print(f"Embedding {len(child_chunks)} Child Chunks (Sentences) for indexing...")
+    log_fn(f"Embedding {len(child_chunks)} Child Chunks (Sentences) for indexing...")
     embs = embed_model.encode(child_chunks, convert_to_numpy=True, show_progress_bar=True)
 
     # 4. Normalize embeddings (CRITICAL for accurate cosine distance search in FAISS)
     embs = embs / np.linalg.norm(embs, axis=1, keepdims=True)
 
     # 5. Store in FAISS (IndexFlatIP for Inner Product search, which is Cosine Similarity on normalized vectors)
-    print("Building FAISS index (IndexFlatIP)...")
+    log_fn("Building FAISS index (IndexFlatIP)...")
     index = faiss.IndexFlatIP(embs.shape[1])
     index.add(embs.astype('float32'))
 
@@ -129,9 +129,9 @@ def index(path):
     np.save("parent_map_indices.npy", np.array(parent_map_indices))
     np.save("sources.npy", np.array(parent_sources, dtype=object))
 
-    print("\n--- Indexing Complete ---")
-    print(f"Total Parent Chunks (Context): {len(parent_chunks)} (Dynamic Size)")
-    print(f"Total Child Chunks (Indexed): {len(child_chunks)} (Individual Sentences)")
+    log_fn("\n--- Indexing Complete ---")
+    log_fn(f"Total Parent Chunks (Context): {len(parent_chunks)} (Dynamic Size)")
+    log_fn(f"Total Child Chunks (Indexed): {len(child_chunks)} (Individual Sentences)")
 
 
 

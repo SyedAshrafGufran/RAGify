@@ -1,56 +1,45 @@
-# app_gui_final.py
+# app_gui_final_v3.py
 import sys
 import os
 import textwrap
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QTextEdit, QPushButton, QMessageBox,
-    QFileDialog, QCheckBox, QFrame, QMenuBar, QAction
+    QFileDialog, QCheckBox, QFrame, QMenuBar, QAction, QSplitter
 )
 from PyQt5.QtGui import QFont, QColor
 from PyQt5.QtCore import Qt
 
-# Import your chatbot query function
-from query import answer_query 
-from index_docs import index 
+# Import chatbot logic
+from query import answer_query
+from index_docs import index
 
 
 class ChatbotApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("⚙️ RAGit")
-        self.setGeometry(150, 100, 950, 700)
+        self.setGeometry(150, 100, 950, 750)
         self.dark_mode = False
         self.folder_path = None
-        self.chat_history = []  # Store conversation for download
+        self.chat_history = []
+
         self.init_ui()
         self.show()
-        self.select_folder_after_open()
-
-    def select_folder_after_open(self):
-        """Ask for folder after the UI is shown."""
-        folder_path = QFileDialog.getExistingDirectory(
-            self, "Select Folder Containing Documents", os.getcwd()
-        )
-        if not folder_path:
-            QMessageBox.critical(self, "No Folder Selected", "Application will exit.")
-            sys.exit()
-        else:
-            self.folder_path = folder_path
-            index(folder_path)
-            self.append_chat(f"📁 Loaded folder: {folder_path}\n{'-'*70}\n", user=False)
-            # Optional: create embeddings here using the selected folder
-            # create_embeddings(folder_path)
 
     def init_ui(self):
-        # Main vertical layout
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(8)
 
-        # Menu bar
+        # === Menu Bar ===
         menu_bar = QMenuBar()
         file_menu = menu_bar.addMenu("File")
+
+        select_folder_action = QAction("Select Folder", self)
+        select_folder_action.triggered.connect(self.select_folder)
+        file_menu.addAction(select_folder_action)
+
         download_action = QAction("Download Conversation", self)
         download_action.triggered.connect(self.download_conversation)
         file_menu.addAction(download_action)
@@ -59,36 +48,66 @@ class ChatbotApp(QWidget):
         help_action = QAction("Instructions", self)
         help_action.triggered.connect(self.show_help)
         help_menu.addAction(help_action)
+
         main_layout.setMenuBar(menu_bar)
 
-        # Header
+        # === Header ===
         header = QLabel("⚙️ RAGit")
         header.setFont(QFont("Segoe UI", 24, QFont.Bold))
         header.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(header)
 
-        # Dark mode toggle
+        # === Dark Mode Toggle ===
         self.dark_mode_toggle = QCheckBox("Dark Mode")
         self.dark_mode_toggle.setFont(QFont("Segoe UI", 11))
         self.dark_mode_toggle.stateChanged.connect(self.toggle_dark_mode)
         main_layout.addWidget(self.dark_mode_toggle, alignment=Qt.AlignRight)
 
-        # Chat frame
+        # === Splitter for Chat & Logs ===
+        splitter = QSplitter(Qt.Vertical)
+
+        # --- Chat Section ---
         chat_frame = QFrame()
         chat_layout = QVBoxLayout()
         chat_layout.setContentsMargins(5, 5, 5, 5)
+
+        chat_label = QLabel("💬 Chat")
+        chat_label.setFont(QFont("Segoe UI", 13, QFont.Bold))
+        chat_layout.addWidget(chat_label)
 
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
         self.chat_display.setFont(QFont("Consolas", 11))
         self.chat_display.setStyleSheet(
-            "background-color: #f5f5f5; color: #1a1a1a; border-radius: 8px; padding: 10px;"
+            "background-color: #f8f8f8; color: #111; border-radius: 8px; padding: 10px;"
         )
         chat_layout.addWidget(self.chat_display)
         chat_frame.setLayout(chat_layout)
-        main_layout.addWidget(chat_frame, stretch=1)
+        splitter.addWidget(chat_frame)
 
-        # Input layout
+        # --- Log Section ---
+        log_frame = QFrame()
+        log_layout = QVBoxLayout()
+        log_layout.setContentsMargins(5, 5, 5, 5)
+
+        log_label = QLabel("🧾 Logs")
+        log_label.setFont(QFont("Segoe UI", 13, QFont.Bold))
+        log_layout.addWidget(log_label)
+
+        self.log_display = QTextEdit()
+        self.log_display.setReadOnly(True)
+        self.log_display.setFont(QFont("Consolas", 10))
+        self.log_display.setStyleSheet(
+            "background-color: #f0f0f0; color: #333; border-radius: 8px; padding: 10px;"
+        )
+        log_layout.addWidget(self.log_display)
+        log_frame.setLayout(log_layout)
+        splitter.addWidget(log_frame)
+
+        splitter.setSizes([500, 200])  # Adjust proportions
+        main_layout.addWidget(splitter, stretch=1)
+
+        # === Input Area ===
         input_layout = QHBoxLayout()
         self.input_box = QLineEdit()
         self.input_box.setPlaceholderText("Type your question here...")
@@ -106,46 +125,69 @@ class ChatbotApp(QWidget):
         main_layout.addLayout(input_layout)
         self.setLayout(main_layout)
 
-    def toggle_dark_mode(self, state):
-        self.dark_mode = state == Qt.Checked
-        if self.dark_mode:
-            self.setStyleSheet("background-color: #1e1e1e; color: #f0f0f0;")
-            self.chat_display.setStyleSheet(
-                "background-color: #2e2e2e; color: #e0e0e0; border-radius: 8px; padding: 10px;"
-            )
-        else:
-            self.setStyleSheet("")
-            self.chat_display.setStyleSheet(
-                "background-color: #f5f5f5; color: #1a1a1a; border-radius: 8px; padding: 10px;"
-            )
+    # === Folder Selection & Indexing ===
+    def select_folder(self):
+        folder_path = QFileDialog.getExistingDirectory(
+            self, "Select Folder Containing Documents", os.getcwd()
+        )
+        if not folder_path:
+            QMessageBox.warning(self, "No Folder Selected", "Please select a folder.")
+            return
 
+        self.folder_path = folder_path
+        self.log("📁 Selected folder: " + folder_path)
+        self.log("🔍 Indexing documents...\n")
+
+        def print_progress(msg):
+            self.log(msg)
+
+        try:
+            index(folder_path, log_fn=print_progress)
+            self.log("✅ Indexing completed!\n" + "-"*70)
+        except Exception as e:
+            self.log(f"❌ Indexing failed: {str(e)}")
+
+    # === Chat Handling ===
     def handle_query(self):
+        if not self.folder_path:
+            QMessageBox.warning(self, "No Folder Selected", "Please select a folder first!")
+            return
+
         query = self.input_box.text().strip()
         if not query:
             QMessageBox.warning(self, "Empty Input", "Please type a question!")
             return
 
-        self.append_chat(f"User: {query}", user=True)
-        self.chat_history.append(f"User: {query}")
+        self.append_chat(f"🧑 You: {query}", user=True)
+        self.chat_history.append(f"You: {query}")
         self.input_box.clear()
 
         try:
-            answer = answer_query(query)  # Must return string
+            answer = answer_query(query)
         except Exception as e:
             answer = f"Error: {str(e)}"
 
-        wrapped_answer = textwrap.fill(answer, width=90)
-        self.append_chat(f"Bot: {wrapped_answer}", user=False)
-        self.chat_history.append(f"Bot: {wrapped_answer}")
+        wrapped = textwrap.fill(answer, width=90)
+        self.append_chat(f"🤖 Bot: {wrapped}", user=False)
+        self.chat_history.append(f"Bot: {wrapped}")
 
+    # === Append to Chat ===
     def append_chat(self, message, user=True):
-        self.chat_display.setTextColor(QColor("#1E90FF") if user else QColor("#32CD32"))
+        color = "#1E90FF" if user else "#32CD32"
+        self.chat_display.setTextColor(QColor(color))
         self.chat_display.append(message)
         self.chat_display.append("-" * 80 + "\n")
-        self.chat_display.verticalScrollBar().setValue(
-            self.chat_display.verticalScrollBar().maximum()
-        )
+        self.chat_display.moveCursor(self.chat_display.textCursor().End)
+        self.chat_display.ensureCursorVisible()
 
+    # === Append to Logs ===
+    def log(self, message):
+        self.log_display.setTextColor(QColor("#8B0000"))
+        self.log_display.append(message)
+        self.log_display.moveCursor(self.log_display.textCursor().End)
+        self.log_display.ensureCursorVisible()
+
+    # === Conversation Save ===
     def download_conversation(self):
         if not self.chat_history:
             QMessageBox.information(self, "No Conversation", "There is nothing to save yet.")
@@ -159,16 +201,37 @@ class ChatbotApp(QWidget):
                 f.write("\n".join(self.chat_history))
             QMessageBox.information(self, "Saved", f"Conversation saved at {file_path}")
 
+    # === Help Dialog ===
     def show_help(self):
         QMessageBox.information(
             self,
             "Help",
-            "1. Select a folder with documents at startup.\n"
-            "2. Type a question in the input box.\n"
-            "3. Press Send to get answers.\n"
-            "4. Use File > Download Conversation to save chat.\n"
-            "5. Toggle Dark Mode using the checkbox."
+            "1. Use File → Select Folder to load your documents.\n"
+            "2. Type a question below and press Send.\n"
+            "3. Logs show progress and indexing details.\n"
+            "4. Save your chat via File → Download Conversation.\n"
+            "5. Use Dark Mode toggle for comfort."
         )
+
+    # === Dark Mode ===
+    def toggle_dark_mode(self, state):
+        self.dark_mode = state == Qt.Checked
+        if self.dark_mode:
+            self.setStyleSheet("background-color: #121212; color: #f0f0f0;")
+            self.chat_display.setStyleSheet(
+                "background-color: #1e1e1e; color: #e0e0e0; border-radius: 8px; padding: 10px;"
+            )
+            self.log_display.setStyleSheet(
+                "background-color: #242424; color: #c0c0c0; border-radius: 8px; padding: 10px;"
+            )
+        else:
+            self.setStyleSheet("")
+            self.chat_display.setStyleSheet(
+                "background-color: #f8f8f8; color: #111; border-radius: 8px; padding: 10px;"
+            )
+            self.log_display.setStyleSheet(
+                "background-color: #f0f0f0; color: #333; border-radius: 8px; padding: 10px;"
+            )
 
 
 if __name__ == "__main__":
