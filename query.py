@@ -83,13 +83,13 @@ def answer_query(query):
         print(f"[{i+1}] {src}")
     print("="*60)
 
-# --- CLI Loop ---
-if __name__ == "__main__":
-    print("Hierarchical RAG + Phi3 ready. Type 'exit' to quit.")
-    while True:
-        q = input("\nAsk: ").strip()
-        if q.lower() in ["exit", "quit"]:
-            print("Exiting...")
-            break
-        if q:
-            answer_query(q)
+# # --- CLI Loop ---
+# if __name__ == "__main__":
+#     print("Hierarchical RAG + Phi3 ready. Type 'exit' to quit.")
+#     while True:
+#         q = input("\nAsk: ").strip()
+#         if q.lower() in ["exit", "quit"]:
+#             print("Exiting...")
+#             break
+#         if q:
+#             answer_query(q)
