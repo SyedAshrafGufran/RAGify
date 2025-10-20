@@ -78,6 +78,7 @@ def dynamic_semantic_chunk(text: str, model: SentenceTransformer) -> List[str]:
 def index(path, log_fn):
     # Initialize embedding model (used here to compute semantic splits)
     log_fn("Loading embedding model...")
+    print("Loading embedding model...")
     embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 
     # Load docs
@@ -90,6 +91,7 @@ def index(path, log_fn):
 
     # 1. Iterate and create dynamic Parent Chunks
     log_fn("Creating Dynamic Semantic Chunks...")
+    print("Creating Dynamic Semantic Chunks...")
     for name, text in docs:
         # Use the dynamic splitter to create Parent Chunks
         parent_list = dynamic_semantic_chunk(text, embed_model)
@@ -113,6 +115,7 @@ def index(path, log_fn):
 
     # 3. Embed Child Chunks (Sentences)
     log_fn(f"Embedding {len(child_chunks)} Child Chunks (Sentences) for indexing...")
+    print(f"Embedding {len(child_chunks)} Child Chunks (Sentences) for indexing...")
     embs = embed_model.encode(child_chunks, convert_to_numpy=True, show_progress_bar=True)
 
     # 4. Normalize embeddings (CRITICAL for accurate cosine distance search in FAISS)
@@ -120,6 +123,7 @@ def index(path, log_fn):
 
     # 5. Store in FAISS (IndexFlatIP for Inner Product search, which is Cosine Similarity on normalized vectors)
     log_fn("Building FAISS index (IndexFlatIP)...")
+    print("Building FAISS index (IndexFlatIP)...")
     index = faiss.IndexFlatIP(embs.shape[1])
     index.add(embs.astype('float32'))
 
@@ -132,6 +136,9 @@ def index(path, log_fn):
     log_fn("\n--- Indexing Complete ---")
     log_fn(f"Total Parent Chunks (Context): {len(parent_chunks)} (Dynamic Size)")
     log_fn(f"Total Child Chunks (Indexed): {len(child_chunks)} (Individual Sentences)")
+    print("\n--- Indexing Complete ---")
+    print(f"Total Parent Chunks (Context): {len(parent_chunks)} (Dynamic Size)")
+    print(f"Total Child Chunks (Indexed): {len(child_chunks)} (Individual Sentences)")
 
 
 
