@@ -55,8 +55,10 @@ def build_prompt(query, retrieved):
         "You are an expert assistant. Use the provided context to answer the question accurately.\n"
         "If the context does not contain enough information, say 'I don't know'.\n"
         "Be concise (2–4 sentences) and cite sources like [1], [2].\n\n"
-        f"Context:\n{joined}\n\n"
-        f"Question: {query}\nAnswer:"
+        "### END INSTRUCTION ###\n\n"
+        f"### CONTEXT ###\n{joined}\n\n"
+        f"### QUESTION ###\n{query}\n\n"
+        f"### ANSWER ###\n"
     )
     return prompt
 
@@ -88,7 +90,9 @@ def answer_query(query):
         return "No relevant context found."
 
     prompt = build_prompt(query, retrieved)
-    output = generator(prompt, max_new_tokens=150, temperature=0.2)[0]["generated_text"]
+    max_context = 4000  # adjust based on your model (phi-3 ~4k tokens)
+    max_new = max(100, min(512, max_context - prompt_len))
+    output = generator(prompt, max_new_tokens=max_new, temperature=0.2)[0]["generated_text"]
 
     # Remove repeated prompt if echoed
     if output.startswith(prompt):
