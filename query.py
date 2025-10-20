@@ -1,21 +1,95 @@
-# query.py
-import faiss, numpy as np
+import faiss
+import numpy as np
 from sentence_transformers import SentenceTransformer
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextGenerationPipeline
+import textwrap
 
-# Load
+# --- Load FAISS Index and Chunks ---
+print("Loading FAISS index and chunks...")
 index = faiss.read_index("docs.index")
-sources = np.load("sources.npy")
-chunks = np.load("chunks.npy")
-model = SentenceTransformer("all-MiniLM-L6-v2")
+parent_chunks = np.load("parent_chunks.npy", allow_pickle=True)
+parent_sources = np.load("sources.npy", allow_pickle=True)
+parent_map_indices = np.load("parent_map_indices.npy", allow_pickle=True)
 
-def search(query, k=3):
-    q_emb = model.encode([query], convert_to_numpy=True)
-    D,I = index.search(q_emb, k)
-    return [(chunks[i], sources[i]) for i in I[0]]
+# --- Load Embedding Model ---
+embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+print("Embedding model loaded.")
 
-while True:
-    q = input("Ask: ")
-    if q.lower() in ["exit","quit"]: break
-    results = search(q)
-    for chunk, src in results:
-        print(f"\nFrom {src}:\n{chunk[:300]}...")
+# --- Load Phi3 Language Model ---
+GEN_MODEL = "./models/phi3"
+print("Loading Phi3 language model (this may take a while)...")
+tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL, legacy=False)
+model = AutoModelForCausalLM.from_pretrained(
+    GEN_MODEL,
+    device_map="auto",
+    dtype="auto",
+    offload_folder="./models/offload"
+)
+generator = TextGenerationPipeline(model=model, tokenizer=tokenizer, do_sample=False)
+print("Phi3 model loaded. Ready to answer questions!")
+
+# --- Retrieval Function ---
+def search(query, k=5):
+    """
+    Searches using Child Chunks (sentences) and returns linked Dynamic Parent Chunks.
+    """
+    q_emb = embed_model.encode([query], convert_to_numpy=True, normalize_embeddings=True)
+    D, I = index.search(q_emb.astype('float32'), k)
+
+    unique_parent_indices = set()
+    results = []
+
+    for child_index in I[0]:
+        parent_idx = parent_map_indices[child_index]
+        if parent_idx not in unique_parent_indices:
+            unique_parent_indices.add(parent_idx)
+            results.append((parent_chunks[parent_idx], parent_sources[parent_idx]))
+    return results
+
+# --- Build Prompt for Phi3 ---
+def build_prompt(query, retrieved):
+    joined = "\n\n".join(
+        [f"[{i+1}] From {src}:\n{chunk}" for i, (chunk, src) in enumerate(retrieved[:5])]
+    )
+    prompt = (
+        "You are an expert assistant. Use the provided context to answer the question accurately.\n"
+        "If the context does not contain enough information, say 'I don't know'.\n"
+        "Be concise (2–4 sentences) and cite sources like [1], [2].\n\n"
+        f"Context:\n{joined}\n\n"
+        f"Question: {query}\nAnswer:"
+    )
+    return prompt
+
+# --- Answer Function ---
+def answer_query(query):
+    retrieved = search(query, k=5)
+    if not retrieved:
+        print("No relevant context found.")
+        return
+
+    prompt = build_prompt(query, retrieved)
+    output = generator(prompt, max_new_tokens=150, temperature=0.2)[0]["generated_text"]
+
+    # Remove repeated prompt if echoed
+    if output.startswith(prompt):
+        output = output[len(prompt):].strip()
+
+    print("\n" + "="*60)
+    print("Query:", query)
+    print("-"*60)
+    print(textwrap.fill(output, width=90))
+    print("\nSources used:")
+    for i, (_, src) in enumerate(retrieved[:5]):
+        print(f"[{i+1}] {src}")
+    print("="*60)
+
+# --- CLI Loop ---
+if __name__ == "__main__":
+    print("Hierarchical RAG + Phi3 ready. Type 'exit' to quit.")
+    while True:
+        q = input("\nAsk: ").strip()
+        if q.lower() in ["exit", "quit"]:
+            print("Exiting...")
+            break
+        if q:
+            answer_query(q)
