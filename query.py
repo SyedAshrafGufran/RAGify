@@ -84,35 +84,77 @@ def build_prompt(query, retrieved):
 #     for i, (_, src) in enumerate(retrieved[:5]):
 #         print(f"[{i+1}] {src}")
 #     print("="*60)
+# def answer_query(query):
+#     retrieved = search(query, k=5)
+#     if not retrieved:
+#         return "No relevant context found."
+
+#     prompt = build_prompt(query, retrieved)
+#     max_context = 4000  # adjust based on your model (phi-3 ~4k tokens)
+#     max_new = max(100, min(512, max_context - len(prompt)))
+#     output = generator(prompt, max_new_tokens=max_new, temperature=0.2)[0]["generated_text"]
+
+#     # Remove repeated prompt if echoed
+#     if output.startswith(prompt):
+#         output = output[len(prompt):].strip()
+
+#     # Format answer
+#     formatted_answer = textwrap.fill(output.strip(), width=90)
+
+#     # Prepare sources
+#     sources = "\n".join(
+#         [f"[{i+1}] {src}" for i, (_, src) in enumerate(retrieved[:5])]
+#     )
+
+#     # Return final content for GUI
+#     final_response = (
+#         f"{formatted_answer}\n\n"
+#         f"📚 Sources used:\n{sources}"
+#     )
+
+#     return final_response
+
 def answer_query(query):
     retrieved = search(query, k=5)
     if not retrieved:
         return "No relevant context found."
 
     prompt = build_prompt(query, retrieved)
-    max_context = 4000  # adjust based on your model (phi-3 ~4k tokens)
-    max_new = max(100, min(512, max_context - prompt_len))
-    output = generator(prompt, max_new_tokens=max_new, temperature=0.2)[0]["generated_text"]
 
-    # Remove repeated prompt if echoed
+    # --- Use tokenizer to count actual tokens ---
+    prompt_token_count = len(tokenizer(prompt)["input_ids"])
+    model_max_length = getattr(tokenizer, "model_max_length", 4096)  # default ~4k for Phi-3
+
+    # Leave room for the model’s answer (new tokens)
+    available_tokens = model_max_length - prompt_token_count
+    max_new = max(50, min(512, available_tokens))  # between 50 and 512 safe range
+
+    # --- Generate answer ---
+    output = generator(
+        prompt,
+        max_new_tokens=max_new,
+        do_sample=False  # deterministic for Q&A
+    )[0]["generated_text"]
+
+    # --- Remove echoed prompt if model repeats it ---
     if output.startswith(prompt):
         output = output[len(prompt):].strip()
 
-    # Format answer
+    # --- Format final answer for console/UI ---
     formatted_answer = textwrap.fill(output.strip(), width=90)
 
-    # Prepare sources
     sources = "\n".join(
         [f"[{i+1}] {src}" for i, (_, src) in enumerate(retrieved[:5])]
     )
 
-    # Return final content for GUI
     final_response = (
         f"{formatted_answer}\n\n"
         f"📚 Sources used:\n{sources}"
     )
 
     return final_response
+
+
 # # --- CLI Loop ---
 # if __name__ == "__main__":
 #     print("Hierarchical RAG + Phi3 ready. Type 'exit' to quit.")
