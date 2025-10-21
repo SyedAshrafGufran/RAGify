@@ -13,6 +13,7 @@ embed_model = None
 tokenizer = None
 model = None
 generator = None
+child_chunks = None
 
 
 # =======================================================
@@ -27,6 +28,7 @@ def load_models_and_indices():
     parent_chunks = np.load("parent_chunks.npy", allow_pickle=True)
     parent_sources = np.load("sources.npy", allow_pickle=True)
     parent_map_indices = np.load("parent_map_indices.npy", allow_pickle=True)
+    child_chunks = np.load("child_chunks.npy", allow_pickle=True)
     print("✅ Chunk index and mapping loaded.")
 
     print("🔄 Loading embedding model...")
@@ -59,14 +61,22 @@ def search(query, k=5):
         parent_idx = parent_map_indices[child_index]
         if parent_idx not in unique_parent_indices:
             unique_parent_indices.add(parent_idx)
-            results.append((parent_chunks[parent_idx], parent_sources[parent_idx]))
+            child_text = child_chunks[child_index]
+            results.append((parent_chunks[parent_idx], parent_sources[parent_idx], child_text))
     return results
 
 
 def build_prompt(query, retrieved):
-    context_blocks = "\n\n".join(
-        [f"[{i+1}] ({src}) {chunk}" for i, (chunk, src) in enumerate(retrieved[:5])]
-    )
+    context_blocks = []
+    for i, (parent_chunk, src, child_chunk) in enumerate(retrieved[:5]):
+        context_block = (
+            f"[{i+1}] Source: ({src})\n"
+            f"ANCHOR SENTENCE: {child_chunk}\n" # Highlight the precise match (Child Chunk)
+            f"FULL CONTEXT: {parent_chunk}"     # Provide rich context (Parent Chunk)
+        )
+        context_blocks.append(context_block)
+
+    joined_context = "\n\n---\n\n".join(context_blocks)
     return (
         "You are an expert assistant with access to several reference documents.\n"
         "Use only the information in the context below to answer the question.\n"
@@ -97,7 +107,9 @@ def answer_query(query):
         output = output.split("Answer:", 1)[-1].strip()
 
     formatted_answer = textwrap.fill(output.strip(), width=90)
-    sources = "\n".join([f"[{i+1}] {src}" for i, (_, src) in enumerate(retrieved[:5])])
+    sources = "\n".join(
+        [f"[{i+1}] {src}" for i, (_, src, _) in enumerate(retrieved[:5])]
+    )
 
     return f"{formatted_answer}\n\n📚 Sources used:\n{sources}"
 # --- Answer Function ---
