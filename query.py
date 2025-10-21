@@ -4,41 +4,57 @@ from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextGenerationPipeline
 import textwrap
 
-# --- Load FAISS Index and Chunks ---
-print("Loading FAISS index and chunks...")
-index = faiss.read_index("docs.index")
-parent_chunks = np.load("parent_chunks.npy", allow_pickle=True)
-parent_sources = np.load("sources.npy", allow_pickle=True)
-parent_map_indices = np.load("parent_map_indices.npy", allow_pickle=True)
+# --- Global placeholders (lazy loaded later) ---
+index = None
+parent_chunks = None
+parent_sources = None
+parent_map_indices = None
+embed_model = None
+tokenizer = None
+model = None
+generator = None
 
-# --- Load Embedding Model ---
-embed_model = SentenceTransformer("all-MiniLM-L6-v2")
-print("Embedding model loaded.")
 
-# --- Load Phi3 Language Model ---
-GEN_MODEL = "./models/phi3"
-print("Loading Phi3 language model (this may take a while)...")
-tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL, legacy=False)
-model = AutoModelForCausalLM.from_pretrained(
-    GEN_MODEL,
-    device_map="auto",
-    dtype="auto",
-    offload_folder="./models/offload"
-)
-generator = TextGenerationPipeline(model=model, tokenizer=tokenizer, do_sample=False)
-print("Phi3 model loaded. Ready to answer questions!")
+# =======================================================
+# Lazy Loader - called only after chunking completes
+# =======================================================
+def load_models_and_indices():
+    global index, parent_chunks, parent_sources, parent_map_indices
+    global embed_model, tokenizer, model, generator
 
-# --- Retrieval Function ---
+    print("🔄 Loading FAISS index and chunk data...")
+    index = faiss.read_index("docs.index")
+    parent_chunks = np.load("parent_chunks.npy", allow_pickle=True)
+    parent_sources = np.load("sources.npy", allow_pickle=True)
+    parent_map_indices = np.load("parent_map_indices.npy", allow_pickle=True)
+    print("✅ Chunk index and mapping loaded.")
+
+    print("🔄 Loading embedding model...")
+    embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+    print("✅ Embedding model ready.")
+
+    print("🔄 Loading Phi3 model...")
+    GEN_MODEL = "./models/phi3"
+    tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL, legacy=False)
+    model = AutoModelForCausalLM.from_pretrained(
+        GEN_MODEL,
+        device_map="auto",
+        dtype="auto",
+        offload_folder="./models/offload"
+    )
+    generator = TextGenerationPipeline(model=model, tokenizer=tokenizer, do_sample=False)
+    print("✅ Phi3 model loaded successfully. System ready!")
+
+
+# =======================================================
+# Retrieval + Prompt Construction + Answer Functions
+# =======================================================
 def search(query, k=5):
-    """
-    Searches using Child Chunks (sentences) and returns linked Dynamic Parent Chunks.
-    """
     q_emb = embed_model.encode([query], convert_to_numpy=True, normalize_embeddings=True)
     D, I = index.search(q_emb.astype('float32'), k)
 
     unique_parent_indices = set()
     results = []
-
     for child_index in I[0]:
         parent_idx = parent_map_indices[child_index]
         if parent_idx not in unique_parent_indices:
@@ -46,16 +62,12 @@ def search(query, k=5):
             results.append((parent_chunks[parent_idx], parent_sources[parent_idx]))
     return results
 
-# --- Build Prompt for Phi3 ---
+
 def build_prompt(query, retrieved):
-    """
-    Build a concise, instruction-focused prompt that minimizes echoing.
-    """
     context_blocks = "\n\n".join(
         [f"[{i+1}] ({src}) {chunk}" for i, (chunk, src) in enumerate(retrieved[:5])]
     )
-
-    prompt = (
+    return (
         "You are an expert assistant with access to several reference documents.\n"
         "Use only the information in the context below to answer the question.\n"
         "If the context does not contain enough details, say 'I don't know.'\n"
@@ -65,7 +77,29 @@ def build_prompt(query, retrieved):
         "Answer:"
     )
 
-    return prompt
+
+def answer_query(query):
+    retrieved = search(query, k=5)
+    if not retrieved:
+        return "No relevant context found."
+
+    prompt = build_prompt(query, retrieved)
+    prompt_token_count = len(tokenizer(prompt)["input_ids"])
+    model_max_length = getattr(tokenizer, "model_max_length", 4096)
+    available_tokens = model_max_length - prompt_token_count
+    max_new = max(50, min(512, available_tokens))
+
+    output = generator(prompt, max_new_tokens=max_new, do_sample=False)[0]["generated_text"]
+
+    if output.startswith(prompt):
+        output = output[len(prompt):].strip()
+    if "Answer:" in output:
+        output = output.split("Answer:", 1)[-1].strip()
+
+    formatted_answer = textwrap.fill(output.strip(), width=90)
+    sources = "\n".join([f"[{i+1}] {src}" for i, (_, src) in enumerate(retrieved[:5])])
+
+    return f"{formatted_answer}\n\n📚 Sources used:\n{sources}"
 # --- Answer Function ---
 # def answer_query(query):
 #     retrieved = search(query, k=5)
@@ -117,48 +151,6 @@ def build_prompt(query, retrieved):
 #     )
 
 #     return final_response
-
-def answer_query(query):
-    retrieved = search(query, k=5)
-    if not retrieved:
-        return "No relevant context found."
-
-    prompt = build_prompt(query, retrieved)
-
-    # --- Use tokenizer to count actual tokens ---
-    prompt_token_count = len(tokenizer(prompt)["input_ids"])
-    model_max_length = getattr(tokenizer, "model_max_length", 4096)  # default ~4k for Phi-3
-
-    # Leave room for the model’s answer (new tokens)
-    available_tokens = model_max_length - prompt_token_count
-    max_new = max(50, min(512, available_tokens))  # between 50 and 512 safe range
-
-    # --- Generate answer ---
-    output = generator(
-        prompt,
-        max_new_tokens=max_new,
-        do_sample=False  # deterministic for Q&A
-    )[0]["generated_text"]
-
-    # --- Remove echoed prompt if model repeats it ---
-    if output.startswith(prompt):
-        output = output[len(prompt):].strip()
-    if "Answer:" in output:
-        output = output.split("Answer:", 1)[-1].strip()
-
-    # --- Format final answer for console/UI ---
-    formatted_answer = textwrap.fill(output.strip(), width=90)
-
-    sources = "\n".join(
-        [f"[{i+1}] {src}" for i, (_, src) in enumerate(retrieved[:5])]
-    )
-
-    final_response = (
-        f"{formatted_answer}\n\n"
-        f"📚 Sources used:\n{sources}"
-    )
-
-    return final_response
 
 
 # # --- CLI Loop ---

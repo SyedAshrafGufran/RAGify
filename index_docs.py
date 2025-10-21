@@ -4,7 +4,7 @@ import re
 from sentence_transformers import SentenceTransformer
 from Load_docs import load_folder # Assuming Load_docs.py is present
 from typing import List
-
+from query import load_models_and_indices
 # --- Configuration ---
 # Threshold for dynamic split (cosine similarity distance)
 # A distance greater than this means a topic shift. 0.3 is a common starting point.
@@ -133,10 +133,11 @@ def index(path, log_fn):
     np.save("sources.npy", np.array(parent_sources, dtype=object))
     np.save("child_chunks.npy", np.array(child_chunks, dtype=object))     # ✅ NEW LINE: Save child chunks
     np.save("child_sources.npy", np.array(child_sources, dtype=object))   # ✅ NEW LINE: Save child sources
-
+    load_models_and_indices()
     log_fn("\n--- Indexing Complete ---")
     log_fn(f"Total Parent Chunks (Context): {len(parent_chunks)} (Dynamic Size)")
     log_fn(f"Total Child Chunks (Indexed): {len(child_chunks)} (Individual Sentences)")
+    log_fn("Chunking complete! You can now start querying your documents.")
     print("\n--- Indexing Complete ---")
     print(f"Total Parent Chunks (Context): {len(parent_chunks)} (Dynamic Size)")
     print(f"Total Child Chunks (Indexed): {len(child_chunks)} (Individual Sentences)")
