@@ -20,7 +20,7 @@ child_chunks = None
 # Lazy Loader - called only after chunking completes
 # =======================================================
 def load_models_and_indices():
-    global index, parent_chunks, parent_sources, parent_map_indices
+    global index, parent_chunks, parent_sources, parent_map_indices, child_chunks
     global embed_model, tokenizer, model, generator
 
     print("🔄 Loading FAISS index and chunk data...")
@@ -82,7 +82,7 @@ def build_prompt(query, retrieved):
         "Use only the information in the context below to answer the question.\n"
         "If the context does not contain enough details, say 'I don't know.'\n"
         "Give a clear, factual answer in 2–4 sentences and cite sources like [1], [2].\n\n"
-        f"Context:\n{context_blocks}\n\n"
+        f"Context:\n{joined_context}\n\n"
         f"Question: {query}\n\n"
         "Answer:"
     )
