@@ -48,20 +48,24 @@ def search(query, k=5):
 
 # --- Build Prompt for Phi3 ---
 def build_prompt(query, retrieved):
-    joined = "\n\n".join(
-        [f"[{i+1}] From {src}:\n{chunk}" for i, (chunk, src) in enumerate(retrieved[:5])]
+    """
+    Build a concise, instruction-focused prompt that minimizes echoing.
+    """
+    context_blocks = "\n\n".join(
+        [f"[{i+1}] ({src}) {chunk}" for i, (chunk, src) in enumerate(retrieved[:5])]
     )
-    prompt = (
-        "You are an expert assistant. Use the provided context to answer the question accurately.\n"
-        "If the context does not contain enough information, say 'I don't know'.\n"
-        "Be concise (2–4 sentences) and cite sources like [1], [2].\n\n"
-        "### END INSTRUCTION ###\n\n"
-        f"### CONTEXT ###\n{joined}\n\n"
-        f"### QUESTION ###\n{query}\n\n"
-        f"### ANSWER ###\n"
-    )
-    return prompt
 
+    prompt = (
+        "You are an expert assistant with access to several reference documents.\n"
+        "Use only the information in the context below to answer the question.\n"
+        "If the context does not contain enough details, say 'I don't know.'\n"
+        "Give a clear, factual answer in 2–4 sentences and cite sources like [1], [2].\n\n"
+        f"Context:\n{context_blocks}\n\n"
+        f"Question: {query}\n\n"
+        "Answer:"
+    )
+
+    return prompt
 # --- Answer Function ---
 # def answer_query(query):
 #     retrieved = search(query, k=5)
@@ -139,6 +143,8 @@ def answer_query(query):
     # --- Remove echoed prompt if model repeats it ---
     if output.startswith(prompt):
         output = output[len(prompt):].strip()
+    if "Answer:" in output:
+        output = output.split("Answer:", 1)[-1].strip()
 
     # --- Format final answer for console/UI ---
     formatted_answer = textwrap.fill(output.strip(), width=90)

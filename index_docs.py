@@ -86,8 +86,8 @@ def index(path, log_fn):
 
     # --- Data Containers ---
     parent_chunks, parent_sources = [], []
-    child_chunks, child_sources = [], [] # Child chunks are individual sentences
-    parent_map_indices = []             # Maps child index to parent index
+    child_chunks, child_sources = [], []  # Child chunks are individual sentences
+    parent_map_indices = []               # Maps child index to parent index
 
     # 1. Iterate and create dynamic Parent Chunks
     log_fn("Creating Dynamic Semantic Chunks...")
@@ -104,14 +104,13 @@ def index(path, log_fn):
             parent_sources.append(name)
             
             # 2. Break Parent Chunk into Child Chunks (Sentences)
-            # Child chunks are the sentences that make up the Parent Chunk
             child_list = get_sentences(parent_text)
             
             for child_text in child_list:
                 # Save Child Chunk (the vector we will index)
                 child_chunks.append(child_text)
                 child_sources.append(name)
-                parent_map_indices.append(parent_index) # Link child back to its parent
+                parent_map_indices.append(parent_index)  # Link child back to its parent
 
     # 3. Embed Child Chunks (Sentences)
     log_fn(f"Embedding {len(child_chunks)} Child Chunks (Sentences) for indexing...")
@@ -132,6 +131,8 @@ def index(path, log_fn):
     np.save("parent_chunks.npy", np.array(parent_chunks, dtype=object))
     np.save("parent_map_indices.npy", np.array(parent_map_indices))
     np.save("sources.npy", np.array(parent_sources, dtype=object))
+    np.save("child_chunks.npy", np.array(child_chunks, dtype=object))     # ✅ NEW LINE: Save child chunks
+    np.save("child_sources.npy", np.array(child_sources, dtype=object))   # ✅ NEW LINE: Save child sources
 
     log_fn("\n--- Indexing Complete ---")
     log_fn(f"Total Parent Chunks (Context): {len(parent_chunks)} (Dynamic Size)")
