@@ -129,40 +129,56 @@ to the user’s question using ONLY the information provided below.
 
 
 
+# query.py
+
 def answer_query(query: str):
+    """
+    Given a query, retrieves relevant documents, generates an answer,
+    and formats it with sources and their corresponding chunks.
+
+    Args:
+        query (str): The user's query/question.
+
+    Returns:
+        tuple: A tuple containing the formatted answer string and a string with sources used.
+    """
     if llm is None:
-        return "Error: LLM not loaded. Please ensure loading succeeded."
+        return "Error: LLM not loaded. Please ensure loading succeeded.", ""
 
-    retrieved = search(query, k=5)  # Retrieve top 5 relevant sources
-    if not retrieved:
-        return "No relevant context found."
+    try:
+        # Step 1: Retrieve the top 5 relevant documents based on the query
+        retrieved = search(query, k=5)  # This assumes `search` is your document retrieval function
+        if not retrieved:
+            return "No relevant context found.", ""
 
-    prompt, unique_sources = build_prompt(query, retrieved)  # Prepare the query prompt
-    response = llm.invoke(prompt)  # Invoke LLM to generate an answer
+        # Step 2: Prepare the query prompt using the retrieved documents
+        prompt, unique_sources = build_prompt(query, retrieved)  # Assuming `build_prompt` formats your context
+        response = llm.invoke(prompt)  # This invokes your LLM with the generated prompt
 
-    # Handle model output
-    output = response.content.strip() if hasattr(response, "content") else str(response).strip()
+        # Step 3: Handle model output
+        output = response.content.strip() if hasattr(response, "content") else str(response).strip()
 
-    # Debug: Check if the chunks are returned as expected
-    print("Chunks for sources: ", unique_sources)
+        # Debugging (check if the sources and chunks are returned correctly)
+        print("Chunks for sources: ", unique_sources)
 
-    # Create response format for sources and their chunks
-    sources_with_chunks = ""
-    for i, (source, chunks) in enumerate(unique_sources.items()):
-        chunk_texts = "\n\n".join([f"**Chunk {j+1}:**\n{chunk}" for j, chunk in enumerate(chunks)])
-        sources_with_chunks += f"\n\n📖 **Source {i+1}:** {source}\n{chunk_texts}"
+        # Step 4: Format the sources with their chunks into a human-readable format
+        sources_with_chunks = ""
+        for i, (source, chunks) in enumerate(unique_sources.items()):
+            chunk_texts = "\n\n".join([f"**Chunk {j+1}:**\n{chunk}" for j, chunk in enumerate(chunks)])
+            sources_with_chunks += f"\n\n📖 **Source {i+1}:** {source}\n{chunk_texts}"
 
-    # Compose clean output
-    formatted = (
-        f"\n🧠 **Answer for:** {query}\n"
-        f"{'-'*90}\n"
-        f"{output}\n\n"
-        f"📚 **Sources used:**\n"
-        f"{sources_with_chunks}\n"
-        f"{'-'*90}"
-    )
+        # Step 5: Compose the final formatted output
+        formatted_output = (
+            f"{'-'*90}\n"
+            f"{output}\n\n"
+            f"{'-'*90}"
+        )
 
-    return formatted
+        return formatted_output, sources_with_chunks
+
+    except Exception as e:
+        # Handle any errors during processing
+        return f"Error: {str(e)}", ""
 
 
 

@@ -144,6 +144,23 @@ class ChatbotApp(QWidget):
         main_layout.addWidget(self.dark_mode_toggle, alignment=Qt.AlignRight)
 
         self.setLayout(main_layout)
+        
+    def format_answer_html(self, query, output, sources_with_chunks):
+        # Escape any HTML special chars
+        output_html = output.replace("\n", "<br>")
+        sources_html = "<ul>" + "".join(f"<li>{s}</li>" for s in sources_with_chunks.split("\n")) + "</ul>"
+
+        formatted_html = f"""
+        <div style="font-family:Segoe UI; font-size:11pt;">
+            <p><b>🧠 Answer for:</b> {query}</p>
+            <hr style="border:1px solid #999;">
+            <p>{output_html}</p>
+            <p><b>📚 Sources used:</b></p>
+            {sources_html}
+            <hr style="border:1px solid #999;">
+        </div>
+        """
+        return formatted_html
 
     # === Folder Selection ===
     def select_folder(self):
@@ -168,7 +185,6 @@ class ChatbotApp(QWidget):
         except Exception as e:
             self.log(f"❌ Indexing failed: {str(e)}")
 
-    # === Chat Logic ===
     def handle_query(self):
         if not self.folder_path:
             QMessageBox.warning(self, "No Folder Selected", "Please select a folder first!")
@@ -184,22 +200,28 @@ class ChatbotApp(QWidget):
         self.input_box.clear()
 
         try:
-            answer = answer_query(query)
+            answer, sources_with_chunks = answer_query(query)  # Ensure you also get sources
         except Exception as e:
             answer = f"Error: {str(e)}"
+            sources_with_chunks = ""
 
-        wrapped = textwrap.fill(answer, width=90)
-        self.append_chat(f"🤖 Bot: {wrapped}", user=False)
-        self.chat_history.append(f"Bot: {wrapped}")
+        html_answer = self.format_answer_html(query, answer, sources_with_chunks)
+        self.append_chat(html_answer, user=False, html=True)
+        self.chat_history.append(f"Bot: {answer}")
 
     # === Append Chat ===
-    def append_chat(self, message, user=True):
-        color = "#1E90FF" if user else "#32CD32"
-        self.chat_display.setTextColor(QColor(color))
-        self.chat_display.append(message)
-        self.chat_display.append("-" * 80 + "\n")
+    def append_chat(self, message, user=True, html=False):
+        if html:
+            self.chat_display.append(message)
+        else:
+            color = "#1E90FF" if user else "#32CD32"
+            self.chat_display.setTextColor(QColor(color))
+            self.chat_display.append(message)
+
+        self.chat_display.append("<hr>")  # separator
         self.chat_display.moveCursor(self.chat_display.textCursor().End)
         self.chat_display.ensureCursorVisible()
+
 
     # === Append Logs ===
     def log(self, message):
