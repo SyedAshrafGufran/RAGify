@@ -1,177 +1,184 @@
-import faiss
+import faiss 
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextGenerationPipeline
+from langchain_openai import ChatOpenAI  # <-- Using local server
+from typing import List, Tuple
 import textwrap
+import os
 
-# --- Global placeholders (lazy loaded later) ---
+# --- Configuration ---
+LOCAL_LLAMA_URL = "http://localhost:8000/v1"  # Your running LlamaCpp server
+N_THREADS = os.cpu_count() or 4
+MAX_NEW_TOKENS = 150 
+
+# --- Global placeholders ---
 index = None
 parent_chunks = None
 parent_sources = None
 parent_map_indices = None
 embed_model = None
-tokenizer = None
-model = None
-generator = None
-child_chunks = None
-
+llm = None  # will be the ChatOpenAI wrapper
 
 # =======================================================
 # Lazy Loader - called only after chunking completes
 # =======================================================
 def load_models_and_indices():
     global index, parent_chunks, parent_sources, parent_map_indices, child_chunks
-    global embed_model, tokenizer, model, generator
+    global embed_model, llm
 
     print("🔄 Loading FAISS index and chunk data...")
-    index = faiss.read_index("docs.index")
-    parent_chunks = np.load("parent_chunks.npy", allow_pickle=True)
-    parent_sources = np.load("sources.npy", allow_pickle=True)
-    parent_map_indices = np.load("parent_map_indices.npy", allow_pickle=True)
-    child_chunks = np.load("child_chunks.npy", allow_pickle=True)
-    print("✅ Chunk index and mapping loaded.")
+    try:
+        index = faiss.read_index("docs.index")
+        parent_chunks = np.load("parent_chunks.npy", allow_pickle=True)
+        parent_sources = np.load("sources.npy", allow_pickle=True)
+        parent_map_indices = np.load("parent_map_indices.npy", allow_pickle=True)
+        child_chunks = np.load("child_chunks.npy", allow_pickle=True)
+        print("✅ Chunk index and mapping loaded.")
+    except FileNotFoundError as e:
+        print(f"FATAL ERROR: Missing indexing file: {e}. Did you run index_docs.py?")
+        return
 
-    print("🔄 Loading embedding model...")
+    print("🔄 Loading embedding model (all-MiniLM-L6-v2)...")
     embed_model = SentenceTransformer("all-MiniLM-L6-v2")
     print("✅ Embedding model ready.")
 
-    print("🔄 Loading Phi3 model...")
-    GEN_MODEL = "./models/phi3"
-    tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL, legacy=False)
-    model = AutoModelForCausalLM.from_pretrained(
-        GEN_MODEL,
-        device_map="auto",
-        dtype="auto",
-        offload_folder="./models/offload"
+    # --- Connect to local LlamaCpp server ---
+    print(f"🚀 Connecting to local LlamaCpp server at {LOCAL_LLAMA_URL}...")
+    llm = ChatOpenAI(
+        model_name="local-llama",           # dummy name, ignored by server
+        openai_api_key="EMPTY",             # dummy key
+        openai_api_base=LOCAL_LLAMA_URL,    # local server URL
+        temperature=0.2,
+        max_tokens=MAX_NEW_TOKENS
     )
-    generator = TextGenerationPipeline(model=model, tokenizer=tokenizer, do_sample=False)
-    print("✅ Phi3 model loaded successfully. System ready!")
+    print("✅ Local LlamaCpp server ready for inference!")
 
 
 # =======================================================
 # Retrieval + Prompt Construction + Answer Functions
 # =======================================================
-def search(query, k=5):
+def search(query: str, k: int = 5) -> List[Tuple[str, str, str]]:
+    if index is None or embed_model is None:
+        print("Error: Models/Index not loaded. Run load_models_and_indices() first.")
+        return []
+
     q_emb = embed_model.encode([query], convert_to_numpy=True, normalize_embeddings=True)
     D, I = index.search(q_emb.astype('float32'), k)
 
     unique_parent_indices = set()
     results = []
+
     for child_index in I[0]:
         parent_idx = parent_map_indices[child_index]
+
         if parent_idx not in unique_parent_indices:
             unique_parent_indices.add(parent_idx)
-            child_text = child_chunks[child_index]
-            results.append((parent_chunks[parent_idx], parent_sources[parent_idx], child_text))
+            parent_text = parent_chunks[parent_idx]
+            source = parent_sources[parent_idx]
+            child_text = child_chunks[child_index] 
+            results.append((parent_text, source, child_text))
     return results
 
+def build_prompt(query: str, retrieved: List[Tuple[str, str, str]]) -> str:
+    # Create a unique map of source → citation number
+    unique_sources = {}
+    source_to_id = {}
+    for _, src, _ in retrieved:
+        if src not in source_to_id:
+            source_to_id[src] = len(unique_sources) + 1
+            unique_sources[src] = []  # Initialize the list of chunks for this source
 
-def build_prompt(query, retrieved):
+    # Merge all child chunks belonging to the same source
+    source_to_context = {}
+    for parent_chunk, src, child_chunk in retrieved:
+        unique_sources[src].append(child_chunk)  # Append child chunk to its source
+
+    # Build unique context blocks with a single consistent citation number
     context_blocks = []
-    for i, (parent_chunk, src, child_chunk) in enumerate(retrieved[:5]):
-        context_block = (
-            f"[{i+1}] Source: ({src})\n"
-            f"ANCHOR SENTENCE: {child_chunk}\n" # Highlight the precise match (Child Chunk)
-            f"FULL CONTEXT: {parent_chunk}"     # Provide rich context (Parent Chunk)
+    for src, chunks in unique_sources.items():
+        src_id = source_to_id[src]
+        merged_context = "\n\n".join([f"ANCHOR: {chunk}" for chunk in chunks])
+        context_blocks.append(
+            f"[{src_id}] Source: ({src})\n{merged_context}"
         )
-        context_blocks.append(context_block)
 
     joined_context = "\n\n---\n\n".join(context_blocks)
-    return (
-        "You are an expert assistant with access to several reference documents.\n"
-        "Use only the information in the context below to answer the question.\n"
-        "If the context does not contain enough details, say 'I don't know.'\n"
-        "Give a clear, factual answer in 2–4 sentences and cite sources like [1], [2].\n\n"
-        f"Context:\n{joined_context}\n\n"
-        f"Question: {query}\n\n"
-        "Answer:"
-    )
+
+    return f"""
+You are an AI research assistant. Your task is to synthesize a structured and well-written response 
+to the user’s question using ONLY the information provided below.
+
+**Instructions:**
+1. Be factual and concise — avoid speculation.
+2. Use short, clear paragraphs and bold key terms.
+3. When appropriate, break your response into:
+   - **Definition / Summary**
+   - **Key Features / Working**
+   - **Use Cases / Applications**
+4. End with a brief **summary line** or key takeaway.
+**Context:**
+{joined_context}
+
+**Question:** {query}
+
+**Answer:**
+""", unique_sources  # Return the mapping of sources to their chunks
 
 
-def answer_query(query):
-    retrieved = search(query, k=5)
+def answer_query(query: str):
+    if llm is None:
+        return "Error: LLM not loaded. Please ensure loading succeeded."
+
+    retrieved = search(query, k=5)  # Retrieve top 5 relevant sources
     if not retrieved:
         return "No relevant context found."
 
-    prompt = build_prompt(query, retrieved)
-    prompt_token_count = len(tokenizer(prompt)["input_ids"])
-    model_max_length = getattr(tokenizer, "model_max_length", 4096)
-    available_tokens = model_max_length - prompt_token_count
-    max_new = max(50, min(512, available_tokens))
+    prompt, unique_sources = build_prompt(query, retrieved)  # Prepare the query prompt
+    response = llm.invoke(prompt)  # Invoke LLM to generate an answer
 
-    output = generator(prompt, max_new_tokens=max_new, do_sample=False)[0]["generated_text"]
+    # Handle model output
+    output = response.content.strip() if hasattr(response, "content") else str(response).strip()
 
-    if output.startswith(prompt):
-        output = output[len(prompt):].strip()
-    if "Answer:" in output:
-        output = output.split("Answer:", 1)[-1].strip()
+    # Create response format for sources and their chunks
+    sources_with_chunks = ""
+    for i, (source, chunks) in enumerate(unique_sources.items()):
+        chunk_texts = "\n\n".join([f"**Chunk {j+1}:**\n{chunk}" for j, chunk in enumerate(chunks)])
+        sources_with_chunks += f"\n\n📖 **Source {i+1}:** {source}\n{chunk_texts}"
 
-    formatted_answer = textwrap.fill(output.strip(), width=90)
-    sources = "\n".join(
-        [f"[{i+1}] {src}" for i, (_, src, _) in enumerate(retrieved[:5])]
+    # Compose clean output
+    formatted = (
+        f"\n🧠 **Answer for:** {query}\n"
+        f"{'-'*90}\n"
+        f"{output}\n\n"
+        f"📚 **Sources used:**\n"
+        f"{sources_with_chunks}\n"
+        f"{'-'*90}"
     )
 
-    return f"{formatted_answer}\n\n📚 Sources used:\n{sources}"
-# --- Answer Function ---
-# def answer_query(query):
-#     retrieved = search(query, k=5)
-#     if not retrieved:
-#         print("No relevant context found.")
-#         return
-
-#     prompt = build_prompt(query, retrieved)
-#     output = generator(prompt, max_new_tokens=150, temperature=0.2)[0]["generated_text"]
-
-#     # Remove repeated prompt if echoed
-#     if output.startswith(prompt):
-#         output = output[len(prompt):].strip()
-
-#     print("\n" + "="*60)
-#     print("Query:", query)
-#     print("-"*60)
-#     print(textwrap.fill(output, width=90))
-#     print("\nSources used:")
-#     for i, (_, src) in enumerate(retrieved[:5]):
-#         print(f"[{i+1}] {src}")
-#     print("="*60)
-# def answer_query(query):
-#     retrieved = search(query, k=5)
-#     if not retrieved:
-#         return "No relevant context found."
-
-#     prompt = build_prompt(query, retrieved)
-#     max_context = 4000  # adjust based on your model (phi-3 ~4k tokens)
-#     max_new = max(100, min(512, max_context - len(prompt)))
-#     output = generator(prompt, max_new_tokens=max_new, temperature=0.2)[0]["generated_text"]
-
-#     # Remove repeated prompt if echoed
-#     if output.startswith(prompt):
-#         output = output[len(prompt):].strip()
-
-#     # Format answer
-#     formatted_answer = textwrap.fill(output.strip(), width=90)
-
-#     # Prepare sources
-#     sources = "\n".join(
-#         [f"[{i+1}] {src}" for i, (_, src) in enumerate(retrieved[:5])]
-#     )
-
-#     # Return final content for GUI
-#     final_response = (
-#         f"{formatted_answer}\n\n"
-#         f"📚 Sources used:\n{sources}"
-#     )
-
-#     return final_response
+    return formatted
 
 
-# # --- CLI Loop ---
+
+
+# # --- CLI Loop (Example Runner) ---
 # if __name__ == "__main__":
-#     print("Hierarchical RAG + Phi3 ready. Type 'exit' to quit.")
+#     load_models_and_indices()
+    
+#     # If loading failed, exit
+#     if llm is None:
+#         exit(1)
+
+#     print("\nHierarchical RAG + LlamaCpp ready. Type 'exit' to quit.")
+    
 #     while True:
 #         q = input("\nAsk: ").strip()
 #         if q.lower() in ["exit", "quit"]:
 #             print("Exiting...")
 #             break
 #         if q:
-#             answer_query(q)
+#             response = answer_query(q)
+#             print("\n" + "="*90)
+#             print("Query:", q)
+#             print("-" * 90)
+#             print(response)
+#             print("="*90)
