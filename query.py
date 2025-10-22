@@ -89,9 +89,12 @@ def build_prompt(query: str, retrieved: List[Tuple[str, str, str]]) -> str:
             unique_sources[src] = []  # Initialize the list of chunks for this source
 
     # Merge all child chunks belonging to the same source
-    source_to_context = {}
     for parent_chunk, src, child_chunk in retrieved:
+        print(f"Adding child chunk for source: {src}")  # Debugging print statement
         unique_sources[src].append(child_chunk)  # Append child chunk to its source
+
+    # Debug: Print out the chunk structure after aggregation
+    print("Unique Sources and Chunks: ", unique_sources)
 
     # Build unique context blocks with a single consistent citation number
     context_blocks = []
@@ -122,7 +125,8 @@ to the user’s question using ONLY the information provided below.
 **Question:** {query}
 
 **Answer:**
-""", unique_sources  # Return the mapping of sources to their chunks
+""", unique_sources
+
 
 
 def answer_query(query: str):
@@ -138,6 +142,9 @@ def answer_query(query: str):
 
     # Handle model output
     output = response.content.strip() if hasattr(response, "content") else str(response).strip()
+
+    # Debug: Check if the chunks are returned as expected
+    print("Chunks for sources: ", unique_sources)
 
     # Create response format for sources and their chunks
     sources_with_chunks = ""
