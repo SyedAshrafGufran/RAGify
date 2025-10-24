@@ -1,4 +1,14 @@
-# app_gui_final_v4.py
+# ----------------------------------------------------------------------------------------------------------
+# File name: app_gui.py
+# Authors: 1. Sufiya Sarwath - 1DS22CS218, 
+#          2. Supriya R - 1DS22CS223, 
+#          3. Syed Ashraf Gufran - 1DS22CS229, 
+#          4. Yaseen Ahmed Khan - 1DS22CS257
+# Guide: Professor Shobana Padmanabhan
+# Description: This script provides a graphical user interface for the RAGit application, allowing users to 
+#              interact with the document retrieval system.
+# ------------------------------------------------------------------------------------------------------------
+
 import sys
 import os
 import textwrap
@@ -10,12 +20,12 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QFont, QColor
 from PyQt5.QtCore import Qt
 
-# Import chatbot logic
 from query import answer_query
 from index_docs import index
 
 
 class ChatbotApp(QWidget):
+    # Initialize the main chatbot application window
     def __init__(self):
         super().__init__()
         self.setWindowTitle("⚙️ RAGit")
@@ -27,12 +37,12 @@ class ChatbotApp(QWidget):
         self.init_ui()
         self.show()
 
+    # Build and initialize all UI components
     def init_ui(self):
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(12, 12, 12, 12)
         main_layout.setSpacing(8)
 
-        # === Menu Bar ===
         menu_bar = QMenuBar()
         file_menu = menu_bar.addMenu("File")
 
@@ -47,13 +57,11 @@ class ChatbotApp(QWidget):
 
         main_layout.setMenuBar(menu_bar)
 
-        # === Header ===
         header = QLabel("⚙️ RAGit")
         header.setFont(QFont("Segoe UI", 26, QFont.Bold))
         header.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(header)
 
-        # === Folder Selection Bar ===
         folder_layout = QHBoxLayout()
         folder_label = QLabel("📁 Select Folder:")
         folder_label.setFont(QFont("Segoe UI", 11))
@@ -76,10 +84,8 @@ class ChatbotApp(QWidget):
         folder_layout.addWidget(select_button)
         main_layout.addLayout(folder_layout)
 
-        # === Splitter for Logs & Chat ===
         splitter = QSplitter(Qt.Vertical)
 
-        # --- Log Section ---
         log_frame = QFrame()
         log_layout = QVBoxLayout()
         log_layout.setContentsMargins(5, 5, 5, 5)
@@ -98,7 +104,6 @@ class ChatbotApp(QWidget):
         log_frame.setLayout(log_layout)
         splitter.addWidget(log_frame)
 
-        # --- Chat Section ---
         chat_frame = QFrame()
         chat_layout = QVBoxLayout()
         chat_layout.setContentsMargins(5, 5, 5, 5)
@@ -117,10 +122,9 @@ class ChatbotApp(QWidget):
         chat_frame.setLayout(chat_layout)
         splitter.addWidget(chat_frame)
 
-        splitter.setSizes([250, 500])  # Log smaller, chat bigger
+        splitter.setSizes([250, 500])
         main_layout.addWidget(splitter, stretch=1)
 
-        # === Input Section ===
         input_layout = QHBoxLayout()
         self.input_box = QLineEdit()
         self.input_box.setPlaceholderText("Type your question here...")
@@ -137,7 +141,6 @@ class ChatbotApp(QWidget):
 
         main_layout.addLayout(input_layout)
 
-        # === Dark Mode Toggle ===
         self.dark_mode_toggle = QCheckBox("Dark Mode")
         self.dark_mode_toggle.setFont(QFont("Segoe UI", 10))
         self.dark_mode_toggle.stateChanged.connect(self.toggle_dark_mode)
@@ -145,11 +148,10 @@ class ChatbotApp(QWidget):
 
         self.setLayout(main_layout)
         
+    # Format the model’s response and sources into HTML for display
     def format_answer_html(self, query, output, sources_with_chunks):
-        # Escape any HTML special chars
         output_html = output.replace("\n", "<br>")
         sources_html = "<ul>" + "".join(f"<li>{s}</li>" for s in sources_with_chunks.split("\n")) + "</ul>"
-
         formatted_html = f"""
         <div style="font-family:Segoe UI; font-size:11pt;">
             <p><b>🧠 Answer for:</b> {query}</p>
@@ -162,7 +164,7 @@ class ChatbotApp(QWidget):
         """
         return formatted_html
 
-    # === Folder Selection ===
+    # Handle folder selection and document indexing
     def select_folder(self):
         folder_path = QFileDialog.getExistingDirectory(
             self, "Select Folder Containing Documents", os.getcwd()
@@ -185,6 +187,7 @@ class ChatbotApp(QWidget):
         except Exception as e:
             self.log(f"❌ Indexing failed: {str(e)}")
 
+    # Handle user queries and display responses
     def handle_query(self):
         if not self.folder_path:
             QMessageBox.warning(self, "No Folder Selected", "Please select a folder first!")
@@ -200,7 +203,7 @@ class ChatbotApp(QWidget):
         self.input_box.clear()
 
         try:
-            answer, sources_with_chunks = answer_query(query)  # Ensure you also get sources
+            answer, sources_with_chunks = answer_query(query)
         except Exception as e:
             answer = f"Error: {str(e)}"
             sources_with_chunks = ""
@@ -209,7 +212,7 @@ class ChatbotApp(QWidget):
         self.append_chat(html_answer, user=False, html=True)
         self.chat_history.append(f"Bot: {answer}")
 
-    # === Append Chat ===
+    # Append new messages to the chat window
     def append_chat(self, message, user=True, html=False):
         if html:
             self.chat_display.append(message)
@@ -217,20 +220,18 @@ class ChatbotApp(QWidget):
             color = "#1E90FF" if user else "#32CD32"
             self.chat_display.setTextColor(QColor(color))
             self.chat_display.append(message)
-
-        self.chat_display.append("<hr>")  # separator
+        self.chat_display.append("<hr>")
         self.chat_display.moveCursor(self.chat_display.textCursor().End)
         self.chat_display.ensureCursorVisible()
 
-
-    # === Append Logs ===
+    # Append messages to the logs section
     def log(self, message):
         self.log_display.setTextColor(QColor("#8B0000"))
         self.log_display.append(message)
         self.log_display.moveCursor(self.log_display.textCursor().End)
         self.log_display.ensureCursorVisible()
 
-    # === Save Conversation ===
+    # Save the current chat history as a text file
     def download_conversation(self):
         if not self.chat_history:
             QMessageBox.information(self, "No Conversation", "There is nothing to save yet.")
@@ -244,7 +245,7 @@ class ChatbotApp(QWidget):
                 f.write("\n".join(self.chat_history))
             QMessageBox.information(self, "Saved", f"Conversation saved at {file_path}")
 
-    # === Help ===
+    # Display help/instructions for using the app
     def show_help(self):
         QMessageBox.information(
             self,
@@ -256,7 +257,7 @@ class ChatbotApp(QWidget):
             "5. Toggle Dark Mode for comfort."
         )
 
-    # === Dark Mode ===
+    # Toggle between light and dark mode themes
     def toggle_dark_mode(self, state):
         self.dark_mode = state == Qt.Checked
         if self.dark_mode:
@@ -277,6 +278,7 @@ class ChatbotApp(QWidget):
             )
 
 
+# Entry point to run the chatbot GUI
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = ChatbotApp()

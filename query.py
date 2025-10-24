@@ -1,27 +1,38 @@
+# -------------------------------------------------------------------------------------------------------
+# File name: query.py
+# Authors: 1. Sufiya Sarwath - 1DS22CS218, 
+#          2. Supriya R - 1DS22CS223, 
+#          3. Syed Ashraf Gufran - 1DS22CS229, 
+#          4. Yaseen Ahmed Khan - 1DS22CS257
+#
+# Guide: Professor Shobana Padmanabhan
+# Description: Handles FAISS-based document retrieval, semantic embedding search, prompt construction, 
+#              and LLM-based answer generation.
+#              
+# ----------------------------------------------------------------------------------------------------------
+
 import faiss 
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from langchain_openai import ChatOpenAI  # <-- Using local server
+from langchain_openai import ChatOpenAI  
 from typing import List, Tuple
 import textwrap
 import os
 
-# --- Configuration ---
-LOCAL_LLAMA_URL = "http://localhost:8000/v1"  # Your running LlamaCpp server
+
+LOCAL_LLAMA_URL = "http://localhost:8000/v1"  
 N_THREADS = os.cpu_count() or 4
 MAX_NEW_TOKENS = 150 
 
-# --- Global placeholders ---
 index = None
 parent_chunks = None
 parent_sources = None
 parent_map_indices = None
 embed_model = None
-llm = None  # will be the ChatOpenAI wrapper
+llm = None  
 
-# =======================================================
-# Lazy Loader - called only after chunking completes
-# =======================================================
+
+# Loads FAISS index, embeddings, and connects to the local Llama model
 def load_models_and_indices():
     global index, parent_chunks, parent_sources, parent_map_indices, child_chunks
     global embed_model, llm
@@ -42,7 +53,6 @@ def load_models_and_indices():
     embed_model = SentenceTransformer("all-MiniLM-L6-v2")
     print("✅ Embedding model ready.")
 
-    # --- Connect to local LlamaCpp server ---
     print(f"🚀 Connecting to local LlamaCpp server at {LOCAL_LLAMA_URL}...")
     llm = ChatOpenAI(
         model_name="local-llama",           # dummy name, ignored by server
@@ -54,9 +64,7 @@ def load_models_and_indices():
     print("✅ Local LlamaCpp server ready for inference!")
 
 
-# =======================================================
-# Retrieval + Prompt Construction + Answer Functions
-# =======================================================
+# Performs semantic search in FAISS to retrieve top document chunks
 def search(query: str, k: int = 5) -> List[Tuple[str, str, str]]:
     if index is None or embed_model is None:
         print("Error: Models/Index not loaded. Run load_models_and_indices() first.")
@@ -79,24 +87,22 @@ def search(query: str, k: int = 5) -> List[Tuple[str, str, str]]:
             results.append((parent_text, source, child_text))
     return results
 
+
+# Builds a structured prompt using retrieved context and source mapping
 def build_prompt(query: str, retrieved: List[Tuple[str, str, str]]) -> str:
-    # Create a unique map of source → citation number
     unique_sources = {}
     source_to_id = {}
     for _, src, _ in retrieved:
         if src not in source_to_id:
             source_to_id[src] = len(unique_sources) + 1
-            unique_sources[src] = []  # Initialize the list of chunks for this source
+            unique_sources[src] = []  
 
-    # Merge all child chunks belonging to the same source
     for parent_chunk, src, child_chunk in retrieved:
-        print(f"Adding child chunk for source: {src}")  # Debugging print statement
-        unique_sources[src].append(child_chunk)  # Append child chunk to its source
+        print(f"Adding child chunk for source: {src}")  
+        unique_sources[src].append(child_chunk)  
 
-    # Debug: Print out the chunk structure after aggregation
     print("Unique Sources and Chunks: ", unique_sources)
 
-    # Build unique context blocks with a single consistent citation number
     context_blocks = []
     for src, chunks in unique_sources.items():
         src_id = source_to_id[src]
@@ -109,7 +115,7 @@ def build_prompt(query: str, retrieved: List[Tuple[str, str, str]]) -> str:
 
     return f"""
 You are an AI research assistant. Your task is to synthesize a structured and well-written response 
-to the user’s question using ONLY the information provided below.
+to the user's question using ONLY the information provided below.
 
 **Instructions:**
 1. Be factual and concise — avoid speculation.
@@ -128,46 +134,28 @@ to the user’s question using ONLY the information provided below.
 """, unique_sources
 
 
-
-# query.py
-
+# Handles full query-answer pipeline using search, prompt build, and LLM generation
 def answer_query(query: str):
-    """
-    Given a query, retrieves relevant documents, generates an answer,
-    and formats it with sources and their corresponding chunks.
-
-    Args:
-        query (str): The user's query/question.
-
-    Returns:
-        tuple: A tuple containing the formatted answer string and a string with sources used.
-    """
     if llm is None:
         return "Error: LLM not loaded. Please ensure loading succeeded.", ""
 
     try:
-        # Step 1: Retrieve the top 5 relevant documents based on the query
-        retrieved = search(query, k=5)  # This assumes `search` is your document retrieval function
+        retrieved = search(query, k=5)
         if not retrieved:
             return "No relevant context found.", ""
 
-        # Step 2: Prepare the query prompt using the retrieved documents
-        prompt, unique_sources = build_prompt(query, retrieved)  # Assuming `build_prompt` formats your context
-        response = llm.invoke(prompt)  # This invokes your LLM with the generated prompt
+        prompt, unique_sources = build_prompt(query, retrieved)
+        response = llm.invoke(prompt)
 
-        # Step 3: Handle model output
         output = response.content.strip() if hasattr(response, "content") else str(response).strip()
 
-        # Debugging (check if the sources and chunks are returned correctly)
         print("Chunks for sources: ", unique_sources)
 
-        # Step 4: Format the sources with their chunks into a human-readable format
         sources_with_chunks = ""
         for i, (source, chunks) in enumerate(unique_sources.items()):
             chunk_texts = "\n\n".join([f"**Chunk {j+1}:**\n{chunk}" for j, chunk in enumerate(chunks)])
             sources_with_chunks += f"\n\n📖 **Source {i+1}:** {source}\n{chunk_texts}"
 
-        # Step 5: Compose the final formatted output
         formatted_output = (
             f"{'-'*90}\n"
             f"{output}\n\n"
@@ -177,7 +165,6 @@ def answer_query(query: str):
         return formatted_output, sources_with_chunks
 
     except Exception as e:
-        # Handle any errors during processing
         return f"Error: {str(e)}", ""
 
 

@@ -1,7 +1,21 @@
-# load_docs.py
-from pathlib import Path
-import pypdf, docx
+# -----------------------------------------------------------------------------
+# File name: Load_docs.py
+# Authors: 1. Sufiya Sarwath - 1DS22CS218, 
+#          2. Supriya R - 1DS22CS223, 
+#          3. Syed Ashraf Gufran - 1DS22CS229, 
+#          4. Yaseen Ahmed Khan - 1DS22CS257
+#
+# Guide: Professor Shobana Padmanabhan
+# Description: Script to extract text content from PDF, DOCX, and TXT files 
+#              inside a specified folder for further processing or analysis.
+# ------------------------------------------------------------------------------
 
+from pathlib import Path
+import pypdf
+import docx
+
+
+# Function to load and extract text from a single file (PDF, DOCX, or TXT)
 def load_text_from_file(file_path):
     ext = file_path.suffix.lower()
     if ext == ".pdf":
@@ -15,6 +29,8 @@ def load_text_from_file(file_path):
     else:
         return None
 
+
+# Function to load all supported files from a folder
 def load_folder(folder="docs"):
     texts = []
     for file in Path(folder).glob("**/*"):
