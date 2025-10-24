@@ -9,6 +9,7 @@
 #              interact with the document retrieval system.
 # ------------------------------------------------------------------------------------------------------------
 
+#import section
 import sys
 import os
 import textwrap
@@ -25,6 +26,16 @@ from index_docs import index
 
 
 class ChatbotApp(QWidget):
+    #Predefined set of quesetions and responses
+    GENERAL_RESPONSES = {
+    "who are you": "I'm RAGit — your document-savvy assistant, trained to dig through your files faster than Ctrl+F ever could.",
+    "what is your name": "I’m RAGit! Your Retrieval-Augmented Genius in tech form.",
+    "hello": "Hey there! 👋 Ready to dive into some documents?",
+    "hi": "Hi! How’s it going?",
+    "how are you": "Running smoothly at 60 FPS, thanks for asking! 😄",
+    "what can you do": "I can read, recall, and reason over your documents. Ask away!",
+    }
+
     # Initialize the main chatbot application window
     def __init__(self):
         super().__init__()
@@ -197,20 +208,30 @@ class ChatbotApp(QWidget):
         if not query:
             QMessageBox.warning(self, "Empty Input", "Please type a question!")
             return
+        
+        if not os.path.exists("docs.index"):
+            QMessageBox.warning(self, "Index Missing", "Please re-index your folder before asking questions.")
+            return
 
         self.append_chat(f"🧑 You: {query}", user=True)
         self.chat_history.append(f"You: {query}")
         self.input_box.clear()
-
+        
         try:
-            answer, sources_with_chunks = answer_query(query)
+            normalized_query = query.lower().strip("?!. ")
+            if normalized_query in self.GENERAL_RESPONSES:
+                answer = self.GENERAL_RESPONSES[normalized_query]
+                sources_with_chunks = "N/A (general response)"
+            else:
+                answer, sources_with_chunks = answer_query(query)
         except Exception as e:
             answer = f"Error: {str(e)}"
             sources_with_chunks = ""
 
         html_answer = self.format_answer_html(query, answer, sources_with_chunks)
         self.append_chat(html_answer, user=False, html=True)
-        self.chat_history.append(f"Bot: {answer}")
+        self.chat_history.append(f"Bot: {answer}\nSources: {sources_with_chunks}")
+
 
     # Append new messages to the chat window
     def append_chat(self, message, user=True, html=False):

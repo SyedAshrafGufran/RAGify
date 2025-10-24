@@ -11,6 +11,7 @@
 #              similarity search and retrieval.
 # -------------------------------------------------------------------------------------------
 
+#import section
 import faiss
 import numpy as np
 import re
