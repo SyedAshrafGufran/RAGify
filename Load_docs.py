@@ -5,7 +5,7 @@
 #          3. Syed Ashraf Gufran - 1DS22CS229, 
 #          4. Yaseen Ahmed Khan - 1DS22CS257
 #
-# Guide: Professor Shobana Padmanabhan
+# Guide: Dr Shobhana Padmanabhan
 # Description: Script to extract text content from PDF, DOCX, and TXT files 
 #              inside a specified folder for further processing or analysis.
 # ------------------------------------------------------------------------------

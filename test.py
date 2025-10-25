@@ -1,7 +1,7 @@
 import faiss 
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from langchain.chat_models import ChatOpenAI  # <-- Using local server
+from langchain_openai import ChatOpenAI  # <-- Using local server
 from typing import List, Tuple
 import textwrap
 import os

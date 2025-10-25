@@ -5,7 +5,7 @@
 #          3. Syed Ashraf Gufran - 1DS22CS229, 
 #          4. Yaseen Ahmed Khan - 1DS22CS257
 #
-# Guide: Professor Shobana Padmanabhan
+# Guide: Dr Shobhana Padmanabhan
 # Description: This script dynamically segments documents into semantically meaningful 
 #              chunks using embeddings, then indexes them in FAISS for efficient
 #              similarity search and retrieval.
@@ -80,7 +80,7 @@ def index(path, log_fn):
     docs = load_folder(path)
 
     parent_chunks, parent_sources = [], []
-    child_chunks, child_sources = []
+    child_chunks, child_sources = [],[]
     parent_map_indices = []
 
     log_fn("Creating Dynamic Semantic Chunks...")
