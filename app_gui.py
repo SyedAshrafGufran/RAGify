@@ -4,7 +4,7 @@
 #          2. Supriya R - 1DS22CS223, 
 #          3. Syed Ashraf Gufran - 1DS22CS229, 
 #          4. Yaseen Ahmed Khan - 1DS22CS257
-# Guide: Professor Shobana Padmanabhan
+# Guide: Dr Shobhana Padmanabhan
 # Description: This script provides a graphical user interface for the RAGit application, allowing users to 
 #              interact with the document retrieval system.
 # ------------------------------------------------------------------------------------------------------------
@@ -162,9 +162,29 @@ class ChatbotApp(QWidget):
     # Format the model’s response and sources into HTML for display
     def format_answer_html(self, query, output, sources_with_chunks):
         output_html = output.replace("\n", "<br>")
-        sources_html = "<ul>" + "".join(f"<li>{s}</li>" for s in sources_with_chunks.split("\n")) + "</ul>"
+
+        # Dynamic text color for dark/light mode
+        text_color = "#FFFFFF" if self.dark_mode else "#000000"
+
+        # Build sources with bullets only for chunks
+        sources_html = ""
+        for source_block in sources_with_chunks.split("\n\n"):  # assuming each source block is separated by double newline
+            lines = source_block.strip().split("\n")
+            if not lines:
+                continue
+            # First line = source title (no bullet)
+            source_title = lines[0]
+            sources_html += f"<p style='color:{text_color};'>{source_title}</p>"
+
+            # Remaining lines = chunks (with bullets)
+            if len(lines) > 1:
+                sources_html += f"<ul style='color:{text_color}; list-style-type: disc; margin-left:20px;'>"
+                for chunk_line in lines[1:]:
+                    sources_html += f"<li>{chunk_line}</li>"
+                sources_html += "</ul>"
+
         formatted_html = f"""
-        <div style="font-family:Segoe UI; font-size:11pt;">
+        <div style="font-family:Segoe UI; font-size:11pt; color:{text_color};">
             <p><b>🧠 Answer for:</b> {query}</p>
             <hr style="border:1px solid #999;">
             <p>{output_html}</p>
@@ -238,7 +258,10 @@ class ChatbotApp(QWidget):
         if html:
             self.chat_display.append(message)
         else:
-            color = "#1E90FF" if user else "#32CD32"
+            if self.dark_mode:
+                color = "#1E90FF" if user else "#32CD32"
+            else:
+                color = "#1E90FF" if user else "#32CD32"
             self.chat_display.setTextColor(QColor(color))
             self.chat_display.append(message)
         self.chat_display.append("<hr>")
@@ -247,7 +270,8 @@ class ChatbotApp(QWidget):
 
     # Append messages to the logs section
     def log(self, message):
-        self.log_display.setTextColor(QColor("#8B0000"))
+        color = "#FFA07A" if self.dark_mode else "#8B0000"
+        self.log_display.setTextColor(QColor(color))
         self.log_display.append(message)
         self.log_display.moveCursor(self.log_display.textCursor().End)
         self.log_display.ensureCursorVisible()
@@ -282,20 +306,46 @@ class ChatbotApp(QWidget):
     def toggle_dark_mode(self, state):
         self.dark_mode = state == Qt.Checked
         if self.dark_mode:
+            # Main window background
             self.setStyleSheet("background-color: #121212; color: #f0f0f0;")
+
+            # Chat and log text boxes
             self.chat_display.setStyleSheet(
                 "background-color: #1e1e1e; color: #e0e0e0; border-radius: 8px; padding: 10px;"
             )
             self.log_display.setStyleSheet(
                 "background-color: #242424; color: #c0c0c0; border-radius: 8px; padding: 10px;"
             )
+
+            # Folder display and input box
+            self.folder_display.setStyleSheet(
+                "padding: 6px; border-radius: 5px; background-color: #2c2c2c; color: #e0e0e0;"
+            )
+            self.input_box.setStyleSheet(
+                "padding: 6px; border-radius: 5px; background-color: #2c2c2c; color: #e0e0e0;"
+            )
+
+            # Buttons
+            self.send_button.setStyleSheet(
+                "background-color: #4CAF50; color: #f0f0f0; padding: 8px; border-radius: 6px;"
+            )
         else:
+            # Reset to default light mode
             self.setStyleSheet("")
             self.chat_display.setStyleSheet(
                 "background-color: #f8f8f8; color: #111; border-radius: 8px; padding: 10px;"
             )
             self.log_display.setStyleSheet(
                 "background-color: #f4f4f4; color: #222; border-radius: 8px; padding: 10px;"
+            )
+            self.folder_display.setStyleSheet(
+                "padding: 6px; border-radius: 5px; background-color: white; color: black;"
+            )
+            self.input_box.setStyleSheet(
+                "padding: 6px; border-radius: 5px; background-color: white; color: black;"
+            )
+            self.send_button.setStyleSheet(
+                "background-color: #4CAF50; color: white; padding: 8px; border-radius: 6px;"
             )
 
 
